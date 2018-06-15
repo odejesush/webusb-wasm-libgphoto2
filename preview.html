@@ -16,198 +16,66 @@
 <center>
   <h1>WebUSB Camera Live Preview Demo</h1>
   <h4>Use at own risk at the moment! (Hasn't been tested properly, with cameras other than my own).</h4>
-  <button id=button>Click button - receive live preview!</button>
+  <div>
+    <p>Perform I/O operations in the following context:</p>
+    <input type="radio" name="ioContext" id="useWindow">
+    <label for="useWindow">Window</label>
+    <input type="radio" name="ioContext" id="useWorker">
+    <label for="useWorker">Worker</label>
+  </div>
+  <div>
+    <button id=button>Click button - receive live preview!</button>
+  </div>
 </center>
 <canvas id="canvas" width="500" height="500"></canvas>
 <script src="gp.js"></script>
+<script src="usb-ptp.js"></script>
 <script>
   'use strict';
-  let usb = null;
 
-  function doAsync(func, returnAddress) {
-    EmterpreterAsync.handle(function (resume) {
-      func().then((returnValue) => {
-        if (ABORT) return;
-        if (returnAddress) {
-          HEAP32[returnAddress >> 2] = returnValue;
-        }
-        resume();
-      });
-    });
-  }
+  let worker;
 
-  class UsbPTP {
-    constructor(device) {
-      this.device = device;
-      this.bulkOut = null;
-      this.bulkIn = null;
-      this.maxpacketsize = 0;
-
-      this.init();
-    }
-
-    init() {
-      for (let configuration of this.device.configurations) {
-        for (let interface_ of configuration.interfaces) {
-          for (let alternate of interface_.alternates) {
-            for (let endpoint of alternate.endpoints) {
-              this.maxpacketsize = Math.max(this.maxpacketsize, endpoint.packetSize);
-
-              if (endpoint.type == 'bulk' && endpoint.direction == 'out') {
-                if (this.bulkOut === null) {
-                  this.bulkOut = endpoint.endpointNumber;
-                } else {
-                  console.warning('found two bulkOut endpoints.');
-                }
+  function workerOnMessageHandler(event) {
+    switch(event.data.command) {
+      case 'requestDevice':
+        navigator.usb.requestDevice({ filters: event.data.filters })
+            .then(async (device) => {
+              let devices = await navigator.usb.getDevices();
+              for (let i = 0; i < devices.length; ++i) {
+                if (device === devices[i])
+                  worker.postMessage({ command: 'getDevice', devInx: i });
               }
-
-              if (endpoint.type == 'bulk' && endpoint.direction == 'in') {
-                if (this.bulkIn === null) {
-                  this.bulkIn = endpoint.endpointNumber;
-                } else {
-                  console.warning('found two bulkIn endpoints.');
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-
-    async open() {
-      await this.device.open();
-      await this.device.claimInterface(0); // TODO FIXME.
-    }
-
-    async write(dataAddress, dataLength) {
-      const data = new Uint8Array(HEAP8.buffer, dataAddress, dataLength);
-      const result = await this.device.transferOut(this.bulkOut, data);
-      return result.bytesWritten;
-    }
-
-    async read(dataAddress, dataLength) {
-      const result = await this.device.transferIn(this.bulkIn, dataLength);
-
-      // Copy the result back in the HEAP.
-      const srcData = new Uint8Array(result.data.buffer, result.data.byteOffset, result.data.byteLength);
-      const dstData = new Uint8Array(HEAP8.buffer, dataAddress, dataLength);
-      dstData.set(srcData);
-
-      return result.data.byteLength;
-    }
-
-    async controlWrite(request, value, index, dataAddress, dataLength) {
-      const data = new Uint8Array(HEAP8.buffer, dataAddress, dataLength);
-
-      const result = await this.device.controlTransferOut({
-        requestType: 'class',
-        recipient: 'interface',
-        request,
-        value,
-        index,
-      }, data);
-
-      return result.bytesWritten;
-    }
-
-    async controlRead(request, value, index, dataAddress, dataLength) {
-      const result = this.device.controlTransferIn({
-        requestType: 'class',
-        recipient: 'interface',
-        request,
-        value,
-        index,
-      }, dataLength);
-
-      // Copy the result back in the HEAP.
-      const srcData = new Uint8Array(result.data.buffer, result.data.byteOffset, result.data.byteLength);
-      const dstData = new Uint8Array(HEAP8.buffer, dataAddress, dataLength);
-      dstData.set(srcData);
-
-      return result.data.byteLength;
+              worker.postMessage({
+                command: 'getDevice', devInx: device.length
+              });
+            }).catch(err => postMessage({ command: 'getDevice', devInx: -1 }));
+        break;
+      case 'drawImage':
+        drawImage(event.data.blob);
+        break;
     }
   }
 
   const canvas = document.getElementById('canvas');
   const ctx = canvas.getContext('2d');
 
-  function call(ident, returnType, argTypes, args) {
-    Module.ccall(ident, null, argTypes || [], args || [], { async: true });
-    return new Promise((resolve) => {
-      EmterpreterAsync.asyncFinalizers.push((function () {
-        resolve(returnType == 'number' ? HEAP32[EMTSTACKTOP >> 2] : undefined);
-      }));
-    });
+  function drawImage(blob) {
+    const img = new Image();
+    img.onload = () => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, 0, 0, canvas.width, (img.naturalHeight / img.naturalWidth) * canvas.height);
+    };
+    img.src = URL.createObjectURL(blob);
   }
 
   document.getElementById('button').addEventListener('click', async () => {
-    EmterpreterAsync.ensureInit();
-
-    const ptr_ptr = Module._malloc(4);
-    const ptr_ptr2 = Module._malloc(4);
-    const data = new Uint32Array(Module.HEAPU32.buffer, ptr_ptr, 1);
-    const data2 = new Uint32Array(Module.HEAPU32.buffer, ptr_ptr2, 1);
-
-    Module._gp_camera_new(ptr_ptr);
-    const camera_ptr = data[0];
-
-    const context_ptr = Module._gp_context_new();
-
-    Module._gp_abilities_list_new(ptr_ptr);
-    const abilities_list_ptr = data[0];
-
-    Module._gp_abilities_list_load(abilities_list_ptr, context_ptr);
-
-    const abilities_ptr = Module._custom_camera_abilities_new();
-    const num_abilities = Module._gp_abilities_list_count(abilities_list_ptr);
-    const filters = [];
-    for (let i = 0; i < num_abilities; i++) {
-      Module._gp_abilities_list_get_abilities(abilities_list_ptr, i, abilities_ptr);
-      filters.push({
-        vendorId: Module._custom_usb_vendor(abilities_ptr),
-        productId: Module._custom_usb_product(abilities_ptr)
-      });
+    if (document.getElementById('useWorker').checked) {
+      worker = new Worker('usb-worker.js');
+      worker.onmessage = workerOnMessageHandler;
+      worker.postMessage('preview');
+      return;
     }
-
-    const device = await navigator.usb.requestDevice({ filters });
-    usb = new UsbPTP(device);
-
-    const idx = filters.findIndex((filter) => {
-      return filter.vendorId == device.vendorId &&
-        filter.productId == device.productId;
-    });
-
-    Module._gp_abilities_list_get_abilities(abilities_list_ptr, idx, abilities_ptr);
-    Module._custom_camera_set_abilities(camera_ptr, abilities_ptr);
-
-    await call('gp_camera_init', null, ['number', 'number'], [camera_ptr, context_ptr]);
-    // Module._gp_camera_init(camera_ptr, context_ptr);
-
-    /* const text_ptr = Module._custom_camera_text_new();
-    await call('gp_camera_get_summary', null, ['number', 'number', 'number'], [camera_ptr, text_ptr, context_ptr]);
-    Module._custom_print_camera_text(text_ptr);*/
-
-    Module._gp_file_new(ptr_ptr);
-    const file_ptr = data[0];
-
-    for (let i = 0; i < 600; i++) {
-      await call('gp_camera_capture_preview', null, ['number', 'number', 'number'], [camera_ptr, file_ptr, context_ptr]);
-
-      Module._gp_file_detect_mime_type(file_ptr);
-      Module._gp_file_get_mime_type(ptr_ptr);
-      const mimeType = Module.UTF8ToString(data[0]);
-
-      Module._gp_file_get_data_and_size(file_ptr, ptr_ptr, ptr_ptr2);
-      const arrayBuffer = Module.HEAP8.slice(data[0], ptr_ptr2[0]);
-      const blob = new Blob([new Uint8Array(Module.HEAP8.buffer, data[0], ptr_ptr2[0])], { type: mimeType });
-      const img = new Image();
-      img.onload = () => {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctx.drawImage(img, 0, 0, canvas.width, (img.naturalHeight / img.naturalWidth) * canvas.height);
-      };
-      img.src = URL.createObjectURL(blob);
-    }
-
-    Module._gp_camera_exit(camera_ptr, context_ptr);
+    preview();
+    return;
   });
 </script>
