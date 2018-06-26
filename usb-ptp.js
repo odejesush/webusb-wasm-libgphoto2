@@ -1,37 +1,65 @@
+EmterpreterAsync.ensureInit();
+
 let usb = null;
+let usbDevice;
 
-async function fileCapture() {
-  EmterpreterAsync.ensureInit();
+// These constants represent C void** types. These are used to allocate memory
+// for libgphoto2 library objects.
+const ptr_ptr = Module._malloc(4);
+const ptr_ptr2 = Module._malloc(4);
 
-  const ptr_ptr = Module._malloc(4);
-  const ptr_ptr2 = Module._malloc(4);
-  const data = new Uint32Array(Module.HEAPU32.buffer, ptr_ptr, 1);
-  const data2 = new Uint32Array(Module.HEAPU32.buffer, ptr_ptr2, 1);
+// These constants represent the 32-bit value of the memory address pointed to
+// by ptr_ptr and ptr_ptr2 respectively.
+const ptr_data = new Uint32Array(Module.HEAPU32.buffer, ptr_ptr, 1);
+const ptr_data2 = new Uint32Array(Module.HEAPU32.buffer, ptr_ptr2, 1);
 
-  Module._gp_camera_new(ptr_ptr);
-  const camera_ptr = data[0];
+// Create a Camera* and store it in |camera_ptr|.
+// The camera object represents a camera attached to the system.
+Module._gp_camera_new(ptr_ptr);
+const camera_ptr = ptr_data[0];
 
-  const context_ptr = Module._gp_context_new();
+// Create a GPContext* and store it in |context_ptr|.
+// The GPContext is used to handle callbacks and errors as well as other things.
+// It is passed around by functions.
+const context_ptr = Module._gp_context_new();
 
-  Module._gp_abilities_list_new(ptr_ptr);
-  const abilities_list_ptr = data[0];
+// Create a CameraAbilitiesList* and store it in |abilities_list_ptr|.
+// This list stores the supported camera models and their abilities.
+Module._gp_abilities_list_new(ptr_ptr);
+const abilities_list_ptr = ptr_data[0];
 
-  Module._gp_abilities_list_load(abilities_list_ptr, context_ptr);
+// Scan the system for camera drivers
+Module._gp_abilities_list_load(abilities_list_ptr, context_ptr);
 
-  const abilities_ptr = Module._custom_camera_abilities_new();
+// Create a CameraAbilities* and store it in |abilities_ptr|.
+const abilities_ptr = Module._custom_camera_abilities_new();
+
+// Populate the filters to use for requesting a USB device through the WebUSB
+// API. The filters are populated by iterating through the CameraAbilitiesList*
+// and grabbing the vendor ID and product ID for each CameraAbilities.
+function getFilters() {
   const num_abilities = Module._gp_abilities_list_count(abilities_list_ptr);
   const filters = [];
   for (let i = 0; i < num_abilities; i++) {
-    Module._gp_abilities_list_get_abilities(abilities_list_ptr, i, abilities_ptr);
+    Module._gp_abilities_list_get_abilities(abilities_list_ptr, i,
+        abilities_ptr);
     filters.push({
       vendorId: Module._custom_usb_vendor(abilities_ptr),
       productId: Module._custom_usb_product(abilities_ptr)
     });
   }
+  return filters;
+}
 
-  const device = await requestDevice(filters);
+async function fileCapture() {
+  let devices = await navigator.usb.getDevices();
+  if (devices.length < 1)
+    return;
+
+  let device = devices[0];
   usb = new UsbPTP(device);
 
+  const filters = getFilters();
   const idx = filters.findIndex((filter) => {
     return filter.vendorId == device.vendorId &&
       filter.productId == device.productId;
@@ -47,7 +75,7 @@ async function fileCapture() {
   Module._custom_print_camera_text(text_ptr); */
 
   Module._gp_list_new(ptr_ptr);
-  const list_ptr = data[0];
+  const list_ptr = ptr_data[0];
 
   const folders = ['/'];
   for (let i = 0; i < folders.length; i++) {
@@ -57,7 +85,7 @@ async function fileCapture() {
     const count = Module._gp_list_count(list_ptr);
     for (let j = 0; j < count; j++) {
       Module._gp_list_get_name(list_ptr, j, ptr_ptr);
-      folders.push(`${folders[i]}${Module.UTF8ToString(data[0])}/`);
+      folders.push(`${folders[i]}${Module.UTF8ToString(ptr_data[0])}/`);
     }
 
     displayProgress(`Found ${folders.length} folders`);
@@ -75,7 +103,7 @@ async function fileCapture() {
       Module._gp_list_get_name(list_ptr, j, ptr_ptr);
       files.push({
         folder: folders[i],
-        file: Module.UTF8ToString(data[0]),
+        file: Module.UTF8ToString(ptr_data[0]),
       });
     }
 
@@ -88,7 +116,7 @@ async function fileCapture() {
     console.log(file);
 
     Module._gp_file_new(ptr_ptr);
-    const file_ptr = data[0];
+    const file_ptr = ptr_data[0];
 
     Module.ccall('gp_file_open', null, ['number', 'string'], [file_ptr, file.folder + file.file]);
 
@@ -97,12 +125,12 @@ async function fileCapture() {
 
     Module._gp_file_detect_mime_type(file_ptr);
     Module._gp_file_get_mime_type(ptr_ptr);
-    const mimeType = Module.UTF8ToString(data[0]);
+    const mimeType = Module.UTF8ToString(ptr_data[0]);
 
     Module._gp_file_get_data_and_size(file_ptr, ptr_ptr, ptr_ptr2);
-    const arrayBuffer = Module.HEAP8.slice(data[0], ptr_ptr2[0]);
+    const arrayBuffer = Module.HEAP8.slice(ptr_data[0], ptr_ptr2[0]);
     const blob = new Blob([new Uint8Array(Module.HEAP8.buffer,
-          data[0], ptr_ptr2[0])], { type: mimeType });
+          ptr_data[0], ptr_ptr2[0])], { type: mimeType });
     createImage(blob);
 
     Module._gp_file_free(file_ptr);
@@ -116,35 +144,11 @@ async function fileCapture() {
 }
 
 async function preview() {
-  EmterpreterAsync.ensureInit();
+  let devices = await navigator.usb.getDevices();
+  if (devices.length < 1)
+    return;
 
-  const ptr_ptr = Module._malloc(4);
-  const ptr_ptr2 = Module._malloc(4);
-  const data = new Uint32Array(Module.HEAPU32.buffer, ptr_ptr, 1);
-  const data2 = new Uint32Array(Module.HEAPU32.buffer, ptr_ptr2, 1);
-
-  Module._gp_camera_new(ptr_ptr);
-  const camera_ptr = data[0];
-
-  const context_ptr = Module._gp_context_new();
-
-  Module._gp_abilities_list_new(ptr_ptr);
-  const abilities_list_ptr = data[0];
-
-  Module._gp_abilities_list_load(abilities_list_ptr, context_ptr);
-
-  const abilities_ptr = Module._custom_camera_abilities_new();
-  const num_abilities = Module._gp_abilities_list_count(abilities_list_ptr);
-  const filters = [];
-  for (let i = 0; i < num_abilities; i++) {
-    Module._gp_abilities_list_get_abilities(abilities_list_ptr, i, abilities_ptr);
-    filters.push({
-      vendorId: Module._custom_usb_vendor(abilities_ptr),
-      productId: Module._custom_usb_product(abilities_ptr)
-    });
-  }
-
-  const device = await requestDevice(filters);
+  let device = devices[0];
   usb = new UsbPTP(device);
 
   const idx = filters.findIndex((filter) => {
@@ -163,18 +167,18 @@ async function preview() {
   Module._custom_print_camera_text(text_ptr);*/
 
   Module._gp_file_new(ptr_ptr);
-  const file_ptr = data[0];
+  const file_ptr = ptr_data[0];
 
   for (let i = 0; i < 600; i++) {
     await call('gp_camera_capture_preview', null, ['number', 'number', 'number'], [camera_ptr, file_ptr, context_ptr]);
 
     Module._gp_file_detect_mime_type(file_ptr);
     Module._gp_file_get_mime_type(ptr_ptr);
-    const mimeType = Module.UTF8ToString(data[0]);
+    const mimeType = Module.UTF8ToString(ptr_data[0]);
 
     Module._gp_file_get_data_and_size(file_ptr, ptr_ptr, ptr_ptr2);
-    const arrayBuffer = Module.HEAP8.slice(data[0], ptr_ptr2[0]);
-    const blob = new Blob([new Uint8Array(Module.HEAP8.buffer, data[0], ptr_ptr2[0])], { type: mimeType });
+    const arrayBuffer = Module.HEAP8.slice(ptr_data[0], ptr_ptr2[0]);
+    const blob = new Blob([new Uint8Array(Module.HEAP8.buffer, ptr_data[0], ptr_ptr2[0])], { type: mimeType });
     drawImage(blob);
   }
 
@@ -255,8 +259,8 @@ class UsbPTP {
   }
 
   async write(dataAddress, dataLength) {
-    const data = new Uint8Array(HEAP8.buffer, dataAddress, dataLength);
-    const result = await this.device.transferOut(this.bulkOut, data);
+    const writeData = new Uint8Array(HEAP8.buffer, dataAddress, dataLength);
+    const result = await this.device.transferOut(this.bulkOut, writeData);
     return result.bytesWritten;
   }
 
@@ -273,7 +277,7 @@ class UsbPTP {
   }
 
   async controlWrite(request, value, index, dataAddress, dataLength) {
-    const data = new Uint8Array(HEAP8.buffer, dataAddress, dataLength);
+    const writeData = new Uint8Array(HEAP8.buffer, dataAddress, dataLength);
 
     const result = await this.device.controlTransferOut(
         {
@@ -283,7 +287,7 @@ class UsbPTP {
           value,
           index,
         },
-        data);
+        writeData);
 
     return result.bytesWritten;
   }

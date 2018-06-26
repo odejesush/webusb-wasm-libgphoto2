@@ -5,7 +5,7 @@ importScripts('usb-ptp.js');
 async function requestDevice(filters) {
   return new Promise((resolve, reject) => {
     postMessage({ command: 'requestDevice', filters: filters });
-    self.addEventListener('message', event => {
+    self.addEventListener('message', async(event) => {
       if (event.data.command === 'getDevice') {
         if (devInx === -1)
           reject('requestDevice failed');
@@ -13,10 +13,8 @@ async function requestDevice(filters) {
         let devices = await navigator.usb.getDevices();
         if (event.data.devInx < devices.length)
           resolve(devices[devInx]);
-          return;
         else
           reject('Device was disconnected.');
-          return;
       }
     });
   });

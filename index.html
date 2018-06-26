@@ -23,13 +23,14 @@
   <h4>Use at own risk at the moment! (Hasn't been tested properly, with cameras other than my own).</h4>
   <div>
     <p>Perform I/O operations in the following context:</p>
-    <input type="radio" name="ioContext" id="useWindow">
+    <input type="radio" name="ioContext" id="useWindow" checked="checked">
     <label for="useWindow">Window</label>
     <input type="radio" name="ioContext" id="useWorker">
     <label for "useWorker">Worker</label>
   </div>
   <div>
-    <button id=button>Click button - receive previews!</button>
+    <button id="connectCamera">Connect to camera</button>
+    <button id="receivePreview">Click button - receive previews!</button>
   </div>
 </center>
 <div id="progress"></div>
@@ -39,50 +40,72 @@
 <script>
   'use strict';
 
-  let worker;
+  if (UsbPTP) {
+    let worker;
 
-  function workerOnMessageHandler(event) {
-    switch (event.data.command) {
-      case 'requestDevice':
-        navigator.usb.requestDevice({ filters: event.data.filters })
-            .then(async (device) => {
-              let devices = await navigator.usb.getDevices();
-              for (let i = 0; i < devices.length; ++i) {
-                if (device === devices[i])
-                  worker.postMessage({ command: 'getDevice', devInx: i });
-              }
-              worker.postMessage({
-                command: 'getDevice', devInx: devices.length
-              });
-            }).catch(err => postMessage({ command: 'getDevice', devInx: -1 }));
-        break;
-      case 'displayProgress':
-        displayProgress(event.data.text);
-        break;
-      case 'createImage':
-        createImage(event.data.blob);
-        break;
+    async function workerOnMessageHandler(event) {
+      switch (event.data.command) {
+        // case 'requestDevice':
+        //   try {
+        //   let device = await requestDevice(event.data.filters);
+        //   let devices = await navigator.usb.getDevices();
+        //   for (let i = 0; i < devices.length; ++i) {
+        //     if (device === devices[i])
+        //       worker.postMessage({ command: 'getDevice', devInx: i });
+        //     }
+        //     worker.postMessage({
+        //       command: 'getDevice', devInx: devices.length
+        //     });
+        //   } catch(err) {
+        //     postMessage({ command: 'getDevice', devInx: -1 }));
+        //   }
+        //   break;
+        case 'displayProgress':
+          displayProgress(event.data.text);
+          break;
+        case 'createImage':
+          createImage(event.data.blob);
+          break;
+      }
     }
-  }
 
-  function displayProgress(text) {
-    document.getElementById('progress').textContent = text;
-  }
+    // These functions are used to update the page with data from the USB
+    // device. The Dedicated Worker context contains functions with the same
+    // name to allow usb-ptp.js to work in that context. The worker functions
+    // postMessage to this context and the message handler above calls these
+    // functions with the data from the device.
+    // async function requestDevice(filters) {
+    //   return await navigator.usb.requestDevice({filters});
+    // }
 
-  function createImage(blob) {
-    const img = new Image();
-    img.src = URL.createObjectURL(blob);
-    document.getElementById('container').appendChild(img);
-  }
+    function displayProgress(text) {
+      document.getElementById('progress').textContent = text;
+    }
 
-  document.getElementById('button').addEventListener('click', async () => {
-    if (document.getElementById('useWorker').checked) {
-      worker = new Worker('usb-worker.js');
-      worker.onmessage = workerOnMessageHandler;
-      worker.postMessage('fileCapture');
+    function createImage(blob) {
+      const img = new Image();
+      img.src = URL.createObjectURL(blob);
+      document.getElementById('container').appendChild(img);
+    }
+
+    document.getElementById('connectCamera').addEventListener('click', () => {
+      let filters = getFilters();
+      navigator.usb.requestDevice({ filters })
+          .then(() => document.getElementById('progress').textContext =
+              'Successfully connected to camera.')
+          .catch(err => document.getElementById('progress').textContext =
+              err.message);
+    });
+
+    document.getElementById('receivePreview').addEventListener('click', async () => {
+      if (document.getElementById('useWorker').checked) {
+        worker = new Worker('usb-worker.js');
+        worker.onmessage = workerOnMessageHandler;
+        worker.postMessage('fileCapture');
+        return;
+      }
+      fileCapture();
       return;
-    }
-    fileCapture();
-    return;
-  });
+    });
+  }
 </script>
