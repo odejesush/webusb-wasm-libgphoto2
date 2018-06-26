@@ -66,8 +66,16 @@ class UsbPTP {
   }
 
   async open() {
-    await this.device.open();
-    await this.device.claimInterface(0); // TODO FIXME.
+    try {
+      await this.device.open();
+      await this.device.selectConfiguration(1);
+      console.log(this.device.configuration.interfaces[0].interfaceNumber);
+      await this.device.claimInterface(
+          this.device.configuration.interfaces[0].interfaceNumber);
+    } catch (err) {
+      console.error(err.name);
+      console.error(err.message);
+    }
   }
 
   async write(dataAddress, dataLength) {
