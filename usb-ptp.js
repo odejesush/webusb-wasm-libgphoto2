@@ -41,8 +41,8 @@ function getFilters() {
   const num_abilities = Module._gp_abilities_list_count(abilities_list_ptr);
   const filters = [];
   for (let i = 0; i < num_abilities; i++) {
-    Module._gp_abilities_list_get_abilities(abilities_list_ptr, i,
-        abilities_ptr);
+    Module._gp_abilities_list_get_abilities(
+        abilities_list_ptr, i, abilities_ptr);
     filters.push({
       vendorId: Module._custom_usb_vendor(abilities_ptr),
       productId: Module._custom_usb_product(abilities_ptr)
@@ -53,8 +53,7 @@ function getFilters() {
 
 async function fileCapture() {
   let devices = await navigator.usb.getDevices();
-  if (devices.length < 1)
-    return;
+  if (devices.length < 1) return;
 
   let device = devices[0];
   usb = new UsbPTP(device);
@@ -62,16 +61,19 @@ async function fileCapture() {
   const filters = getFilters();
   const idx = filters.findIndex((filter) => {
     return filter.vendorId == device.vendorId &&
-      filter.productId == device.productId;
+        filter.productId == device.productId;
   });
 
-  Module._gp_abilities_list_get_abilities(abilities_list_ptr, idx, abilities_ptr);
+  Module._gp_abilities_list_get_abilities(
+      abilities_list_ptr, idx, abilities_ptr);
   Module._custom_camera_set_abilities(camera_ptr, abilities_ptr);
 
-  await call('gp_camera_init', null, ['number', 'number'], [camera_ptr, context_ptr]);
+  await call(
+      'gp_camera_init', null, ['number', 'number'], [camera_ptr, context_ptr]);
 
   /* const text_ptr = Module._custom_camera_text_new();
-  await call('gp_camera_get_summary', null, ['number', 'number', 'number'], [camera_ptr, text_ptr, context_ptr]);
+  await call('gp_camera_get_summary', null, ['number', 'number', 'number'],
+  [camera_ptr, text_ptr, context_ptr]);
   Module._custom_print_camera_text(text_ptr); */
 
   Module._gp_list_new(ptr_ptr);
@@ -79,8 +81,10 @@ async function fileCapture() {
 
   const folders = ['/'];
   for (let i = 0; i < folders.length; i++) {
-    await call('custom_gp_camera_folder_list_folders', null, ['number', 'string', 'number', 'number'],
-      [camera_ptr, folders[i], list_ptr, context_ptr]);
+    await call(
+        'custom_gp_camera_folder_list_folders', null,
+        ['number', 'string', 'number', 'number'],
+        [camera_ptr, folders[i], list_ptr, context_ptr]);
 
     const count = Module._gp_list_count(list_ptr);
     for (let j = 0; j < count; j++) {
@@ -95,8 +99,10 @@ async function fileCapture() {
 
   const files = [];
   for (let i = 0; i < folders.length; i++) {
-    await call('custom_gp_camera_folder_list_files', null, ['number', 'string', 'number', 'number'],
-      [camera_ptr, folders[i], list_ptr, context_ptr]);
+    await call(
+        'custom_gp_camera_folder_list_files', null,
+        ['number', 'string', 'number', 'number'],
+        [camera_ptr, folders[i], list_ptr, context_ptr]);
 
     const count = Module._gp_list_count(list_ptr);
     for (let j = 0; j < count; j++) {
@@ -118,10 +124,14 @@ async function fileCapture() {
     Module._gp_file_new(ptr_ptr);
     const file_ptr = ptr_data[0];
 
-    Module.ccall('gp_file_open', null, ['number', 'string'], [file_ptr, file.folder + file.file]);
+    Module.ccall(
+        'gp_file_open', null, ['number', 'string'],
+        [file_ptr, file.folder + file.file]);
 
-    await call('gp_camera_file_get', null, ['number', 'string', 'string', 'number', 'number', 'number'],
-      [camera_ptr, file.folder, file.file, 0, file_ptr, context_ptr]);
+    await call(
+        'gp_camera_file_get', null,
+        ['number', 'string', 'string', 'number', 'number', 'number'],
+        [camera_ptr, file.folder, file.file, 0, file_ptr, context_ptr]);
 
     Module._gp_file_detect_mime_type(file_ptr);
     Module._gp_file_get_mime_type(ptr_ptr);
@@ -129,8 +139,9 @@ async function fileCapture() {
 
     Module._gp_file_get_data_and_size(file_ptr, ptr_ptr, ptr_ptr2);
     const arrayBuffer = Module.HEAP8.slice(ptr_data[0], ptr_ptr2[0]);
-    const blob = new Blob([new Uint8Array(Module.HEAP8.buffer,
-          ptr_data[0], ptr_ptr2[0])], { type: mimeType });
+    const blob = new Blob(
+        [new Uint8Array(Module.HEAP8.buffer, ptr_data[0], ptr_ptr2[0])],
+        {type: mimeType});
     createImage(blob);
 
     Module._gp_file_free(file_ptr);
@@ -145,8 +156,7 @@ async function fileCapture() {
 
 async function preview() {
   let devices = await navigator.usb.getDevices();
-  if (devices.length < 1)
-    return;
+  if (devices.length < 1) return;
 
   let device = devices[0];
   usb = new UsbPTP(device);
@@ -154,24 +164,29 @@ async function preview() {
   const filters = getFilters();
   const idx = filters.findIndex((filter) => {
     return filter.vendorId == device.vendorId &&
-      filter.productId == device.productId;
+        filter.productId == device.productId;
   });
 
-  Module._gp_abilities_list_get_abilities(abilities_list_ptr, idx, abilities_ptr);
+  Module._gp_abilities_list_get_abilities(
+      abilities_list_ptr, idx, abilities_ptr);
   Module._custom_camera_set_abilities(camera_ptr, abilities_ptr);
 
-  await call('gp_camera_init', null, ['number', 'number'], [camera_ptr, context_ptr]);
+  await call(
+      'gp_camera_init', null, ['number', 'number'], [camera_ptr, context_ptr]);
   // Module._gp_camera_init(camera_ptr, context_ptr);
 
   /* const text_ptr = Module._custom_camera_text_new();
-  await call('gp_camera_get_summary', null, ['number', 'number', 'number'], [camera_ptr, text_ptr, context_ptr]);
+  await call('gp_camera_get_summary', null, ['number', 'number', 'number'],
+  [camera_ptr, text_ptr, context_ptr]);
   Module._custom_print_camera_text(text_ptr);*/
 
   Module._gp_file_new(ptr_ptr);
   const file_ptr = ptr_data[0];
 
   for (let i = 0; i < 600; i++) {
-    await call('gp_camera_capture_preview', null, ['number', 'number', 'number'], [camera_ptr, file_ptr, context_ptr]);
+    await call(
+        'gp_camera_capture_preview', null, ['number', 'number', 'number'],
+        [camera_ptr, file_ptr, context_ptr]);
 
     Module._gp_file_detect_mime_type(file_ptr);
     Module._gp_file_get_mime_type(ptr_ptr);
@@ -179,7 +194,9 @@ async function preview() {
 
     Module._gp_file_get_data_and_size(file_ptr, ptr_ptr, ptr_ptr2);
     const arrayBuffer = Module.HEAP8.slice(ptr_data[0], ptr_ptr2[0]);
-    const blob = new Blob([new Uint8Array(Module.HEAP8.buffer, ptr_data[0], ptr_ptr2[0])], { type: mimeType });
+    const blob = new Blob(
+        [new Uint8Array(Module.HEAP8.buffer, ptr_data[0], ptr_ptr2[0])],
+        {type: mimeType});
     drawImage(blob);
   }
 
@@ -187,7 +204,7 @@ async function preview() {
 }
 
 function doAsync(func, returnAddress) {
-  EmterpreterAsync.handle(function (resume) {
+  EmterpreterAsync.handle(function(resume) {
     func().then((returnValue) => {
       if (ABORT) return;
       if (returnAddress) {
@@ -199,9 +216,9 @@ function doAsync(func, returnAddress) {
 }
 
 function call(ident, returnType, argTypes, args) {
-  Module.ccall(ident, null, argTypes || [], args || [], { async: true });
+  Module.ccall(ident, null, argTypes || [], args || [], {async: true});
   return new Promise((resolve) => {
-    EmterpreterAsync.asyncFinalizers.push((function () {
+    EmterpreterAsync.asyncFinalizers.push((function() {
       resolve(returnType == 'number' ? HEAP32[EMTSTACKTOP >> 2] : undefined);
     }));
   });
