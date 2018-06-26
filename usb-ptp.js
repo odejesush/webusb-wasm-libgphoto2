@@ -151,6 +151,7 @@ async function preview() {
   let device = devices[0];
   usb = new UsbPTP(device);
 
+  const filters = getFilters();
   const idx = filters.findIndex((filter) => {
     return filter.vendorId == device.vendorId &&
       filter.productId == device.productId;

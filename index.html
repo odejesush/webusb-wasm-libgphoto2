@@ -19,8 +19,9 @@
   }
 </style>
 <center>
-  <h1>WebUSB Camera File Preview Demo</h1>
-  <h4>Use at own risk at the moment! (Hasn't been tested properly, with cameras other than my own).</h4>
+  <h1>WebUSB Camera Preview Demo</h1>
+  <h4>Use at own risk at the moment! (Hasn't been tested properly, with cameras
+    other than my own).</h4>
   <div>
     <p>Perform I/O operations in the following context:</p>
     <input type="radio" name="ioContext" id="useWindow" checked="checked">
@@ -30,62 +31,64 @@
   </div>
   <div>
     <button id="connectCamera">Connect to camera</button>
-    <button id="receivePreview">Click button - receive previews!</button>
+    <button id="filePreview" disabled>Display camera files</button>
+    <button id="livePreview" disabled>Display live camera preview</button>
   </div>
 </center>
-<div id="progress"></div>
-<div id="container"></div>
+<div id="preview">
+  <canvas id="canvas" width="500" height="500" style="display:none"></canvas>
+  <div id="files" style="display:none">
+    <div id="progress"></div>
+    <div id="container"></div>
+  </div>
+</div>
 <script src="gp.js"></script>
 <script src="usb-ptp.js"></script>
 <script>
   'use strict';
 
-  if (UsbPTP) {
-    let worker;
+  const canvas = document.getElementById('canvas');
+  const ctx = canvas.getContext('2d');
+  let worker;
 
-    async function workerOnMessageHandler(event) {
+  // These functions are used to update the page with data from the USB
+  // device. The Dedicated Worker context contains functions with the same
+  // name to allow usb-ptp.js to work in that context. The worker functions
+  // postMessage to this context and the message handler below calls these
+  // functions with the data from the device.
+  function displayProgress(text) {
+    document.getElementById('progress').textContent = text;
+  }
+
+  function createImage(blob) {
+    const img = new Image();
+    img.src = URL.createObjectURL(blob);
+    document.getElementById('container').appendChild(img);
+  }
+
+  function drawImage(blob) {
+    const img = new Image();
+    img.onload = () => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, 0, 0, canvas.width,
+          (img.naturalHeight / img.naturalWidth) * canvas.height);
+    };
+    img.src = URL.createObjectURL(blob);
+  }
+
+  if (UsbPTP) {
+    function workerOnMessageHandler(event) {
       switch (event.data.command) {
-        // case 'requestDevice':
-        //   try {
-        //   let device = await requestDevice(event.data.filters);
-        //   let devices = await navigator.usb.getDevices();
-        //   for (let i = 0; i < devices.length; ++i) {
-        //     if (device === devices[i])
-        //       worker.postMessage({ command: 'getDevice', devInx: i });
-        //     }
-        //     worker.postMessage({
-        //       command: 'getDevice', devInx: devices.length
-        //     });
-        //   } catch(err) {
-        //     postMessage({ command: 'getDevice', devInx: -1 }));
-        //   }
-        //   break;
         case 'displayProgress':
           displayProgress(event.data.text);
           break;
         case 'createImage':
           createImage(event.data.blob);
           break;
+        case 'drawImage':
+          drawImage(event.data.blob);
+          break;
       }
-    }
-
-    // These functions are used to update the page with data from the USB
-    // device. The Dedicated Worker context contains functions with the same
-    // name to allow usb-ptp.js to work in that context. The worker functions
-    // postMessage to this context and the message handler above calls these
-    // functions with the data from the device.
-    // async function requestDevice(filters) {
-    //   return await navigator.usb.requestDevice({filters});
-    // }
-
-    function displayProgress(text) {
-      document.getElementById('progress').textContent = text;
-    }
-
-    function createImage(blob) {
-      const img = new Image();
-      img.src = URL.createObjectURL(blob);
-      document.getElementById('container').appendChild(img);
     }
 
     document.getElementById('connectCamera').addEventListener('click', () => {
@@ -97,15 +100,43 @@
               err.message);
     });
 
-    document.getElementById('receivePreview').addEventListener('click', async () => {
-      if (document.getElementById('useWorker').checked) {
-        worker = new Worker('usb-worker.js');
-        worker.onmessage = workerOnMessageHandler;
-        worker.postMessage('fileCapture');
-        return;
-      }
-      fileCapture();
-      return;
-    });
+    document.getElementById('filePreview')
+        .addEventListener('click', async () => {
+          document.getElementById('canvas').style = 'display:none';
+          document.getElementById('files').style = 'display:block';
+          if (document.getElementById('useWorker').checked) {
+            if (!worker)
+              worker = new Worker('usb-worker.js');
+            worker.onmessage = workerOnMessageHandler;
+            worker.postMessage({ command: 'fileCapture' });
+            return;
+          }
+          fileCapture();
+          return;
+        });
+
+    document.getElementById('livePreview')
+        .addEventListener('click', async () => {
+          document.getElementById('canvas').style = 'display:block';
+          document.getElementById('files').style = 'display:none';
+          if (document.getElementById('useWorker').checked) {
+            if (!worker)
+              worker = new Worker('usb-worker.js');
+            worker.onmessage = workerOnMessageHandler;
+            worker.postMessage({ command: 'preview' });
+            return;
+          }
+          preview();
+          return;
+        });
+
+    // Disable the preview buttons if a camera has not been requested yet.
+    navigator.usb.getDevices({ filters: getFilters() })
+        .then(devices => {
+          if (devices.length > 0) {
+            document.getElementById('filePreview').disabled = false;
+            document.getElementById('livePreview').disabled = false;
+          }
+        });
   }
 </script>
