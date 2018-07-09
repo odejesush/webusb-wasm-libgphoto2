@@ -14,13 +14,18 @@ function drawImage(blob) {
   postMessage({command: 'drawImage', blob: blob});
 }
 
-onmessage = event => {
+onmessage = async (event) => {
   switch (event.data.command) {
     case 'fileCapture':
-      fileCapture();
+      let startTime = performance.now();
+      await fileCapture();
+      postMessage({command: 'finished',
+        startTime: startTime,
+        endTime: performance.now()
+      });
       break;
     case 'preview':
-      preview();
+      preview(event.data.canvas);
       break;
     default:
       break;

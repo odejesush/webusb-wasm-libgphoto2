@@ -154,7 +154,7 @@ async function fileCapture() {
   Module._gp_camera_exit(camera_ptr, context_ptr);
 }
 
-async function preview() {
+async function preview(canvas) {
   let devices = await navigator.usb.getDevices();
   if (devices.length < 1) return;
 
@@ -183,6 +183,7 @@ async function preview() {
   Module._gp_file_new(ptr_ptr);
   const file_ptr = ptr_data[0];
 
+  var ctx = canvas.getContext('2d');
   for (let i = 0; i < 600; i++) {
     await call(
         'gp_camera_capture_preview', null, ['number', 'number', 'number'],
@@ -197,7 +198,11 @@ async function preview() {
     const blob = new Blob(
         [new Uint8Array(Module.HEAP8.buffer, ptr_data[0], ptr_ptr2[0])],
         {type: mimeType});
-    drawImage(blob);
+    let img = await createImageBitmap(blob);
+    ctx.drawImage(img, 0, 0, canvas.width,
+          (img.height / img.width) * canvas.height);
+    if (ctx instanceof OffscreenCanvasRenderingContext2D)
+      ctx.commit();
   }
 
   Module._gp_camera_exit(camera_ptr, context_ptr);

@@ -34,22 +34,28 @@
     <button id="filePreview" disabled>Display camera files</button>
     <button id="livePreview" disabled>Display live camera preview</button>
   </div>
-</center>
-<div id="preview">
-  <canvas id="canvas" width="500" height="500" style="display:none"></canvas>
-  <div id="files" style="display:none">
-    <div id="progress"></div>
-    <div id="container"></div>
+  <div><p id="timer"></p></div>
+  <div id="preview">
+    <canvas id="canvas" width="500" height="500" style="display:none"></canvas>
+    <div id="files" style="display:none">
+      <div id="progress"></div>
+      <div id="container"></div>
+    </div>
   </div>
-</div>
+</center>
 <script src="gp.js"></script>
 <script src="usb-ptp.js"></script>
 <script>
   'use strict';
-
+  const timer = document.getElementById('timer');
   const canvas = document.getElementById('canvas');
-  const ctx = canvas.getContext('2d');
   let worker;
+  let offscreen;
+
+  // These are used to time the file preview function to see the performance
+  // difference between using the Window and Worker contexts.
+  let startTime;
+  let endTime;
 
   // These functions are used to update the page with data from the USB
   // device. The Dedicated Worker context contains functions with the same
@@ -66,14 +72,20 @@
     document.getElementById('container').appendChild(img);
   }
 
-  function drawImage(blob) {
-    const img = new Image();
-    img.onload = () => {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.drawImage(img, 0, 0, canvas.width,
-          (img.naturalHeight / img.naturalWidth) * canvas.height);
-    };
-    img.src = URL.createObjectURL(blob);
+  function displayPerformance() {
+    let delta = endTime - startTime;
+    timer.textContent = `Total time elapsed: ${delta} ms`;
+  }
+
+  function checkDevices() {
+    // Disable the preview buttons if a camera has not been requested yet.
+    navigator.usb.getDevices({ filters: getFilters() })
+        .then(devices => {
+          if (devices.length > 0) {
+            document.getElementById('filePreview').disabled = false;
+            document.getElementById('livePreview').disabled = false;
+          }
+        });
   }
 
   if (UsbPTP) {
@@ -85,8 +97,10 @@
         case 'createImage':
           createImage(event.data.blob);
           break;
-        case 'drawImage':
-          drawImage(event.data.blob);
+        case 'finished':
+          // endTime = event.data.endTime;
+          endTime = performance.now();
+          displayPerformance();
           break;
       }
     }
@@ -98,45 +112,47 @@
               'Successfully connected to camera.')
           .catch(err => document.getElementById('progress').textContext =
               err.message);
+      checkDevices();
     });
 
     document.getElementById('filePreview')
         .addEventListener('click', async () => {
           document.getElementById('canvas').style = 'display:none';
           document.getElementById('files').style = 'display:block';
+          document.getElementById('container').innerHTML = '';
           if (document.getElementById('useWorker').checked) {
             if (!worker)
               worker = new Worker('usb-worker.js');
             worker.onmessage = workerOnMessageHandler;
+            startTime = performance.now();
             worker.postMessage({ command: 'fileCapture' });
             return;
           }
-          fileCapture();
+          startTime = performance.now();
+          await fileCapture();
+          endTime = performance.now();
+          displayPerformance();
           return;
         });
 
     document.getElementById('livePreview')
         .addEventListener('click', async () => {
           document.getElementById('canvas').style = 'display:block';
-          document.getElementById('files').style = 'display:none';
+          // document.getElementById('files').style = 'display:none';
           if (document.getElementById('useWorker').checked) {
+            if (!offscreen)
+              offscreen = canvas.transferControlToOffscreen();
             if (!worker)
               worker = new Worker('usb-worker.js');
             worker.onmessage = workerOnMessageHandler;
-            worker.postMessage({ command: 'preview' });
+            worker.postMessage({ command: 'preview', canvas: offscreen },
+                [offscreen]);
             return;
           }
-          preview();
+          preview(canvas);
           return;
         });
 
-    // Disable the preview buttons if a camera has not been requested yet.
-    navigator.usb.getDevices({ filters: getFilters() })
-        .then(devices => {
-          if (devices.length > 0) {
-            document.getElementById('filePreview').disabled = false;
-            document.getElementById('livePreview').disabled = false;
-          }
-        });
+    checkDevices();
   }
 </script>
