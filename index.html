@@ -72,9 +72,21 @@
     document.getElementById('container').appendChild(img);
   }
 
+  // Pad time to 2 digits.
+  function pad(n, z) {
+    z = z || 2;
+    return ('00' + n).slice(-z);
+  }
+
   function displayPerformance() {
     let delta = endTime - startTime;
-    timer.textContent = `Total time elapsed: ${delta} ms`;
+    let milliseconds = delta % 1000;
+    delta = (delta - milliseconds) / 1000;
+    let seconds = delta % 60;
+    delta = (delta - seconds) / 60;
+    let minutes = delta % 60;
+    timer.textContent = 'Time elapsed: ' + pad(minutes) + ':' +
+        pad(seconds) + ':' + milliseconds.toString() + 'minutes';
   }
 
   function checkDevices() {
@@ -105,14 +117,15 @@
       }
     }
 
-    document.getElementById('connectCamera').addEventListener('click', () => {
-      let filters = getFilters();
-      navigator.usb.requestDevice({ filters })
-          .then(() => document.getElementById('progress').textContext =
-              'Successfully connected to camera.')
-          .catch(err => document.getElementById('progress').textContext =
-              err.message);
-      checkDevices();
+    document.getElementById('connectCamera')
+        .addEventListener('click', async () => {
+          let filters = getFilters();
+          await navigator.usb.requestDevice({ filters })
+              .then(() => document.getElementById('progress').textContext =
+                  'Successfully connected to camera.')
+              .catch(err => document.getElementById('progress').textContext =
+                  err.message);
+          checkDevices();
     });
 
     document.getElementById('filePreview')
