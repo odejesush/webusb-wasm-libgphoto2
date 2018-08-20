@@ -27,5 +27,4 @@ the main thread of the browser.
    camera.
 6. Select one of the demos to run.
 
-If the application does not work with the dedicated worker, use the latest build
-of Chromium from the source code. The demo might not also work with all cameras.
+WebUSB on Dedicated Workers is enabled by default in Chrome 70.
